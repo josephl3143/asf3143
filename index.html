@@ -1,0 +1,439 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <title>복무관리 시스템 (API 연동 버전)</title>
+  <script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.min.js"></script>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    :root {
+      --primary   : #1A56DB;
+      --primary-dk: #1344B0;
+      --success   : #0E9F6E;
+      --warning   : #F59E0B;
+      --danger    : #E02424;
+      --bg        : #F3F6FB;
+      --card      : #FFFFFF;
+      --border    : #D1D5DB;
+      --text-main : #111827;
+      --text-sub  : #6B7280;
+      --radius    : 14px;
+      --shadow    : 0 3px 16px rgba(0,0,0,0.07);
+    }
+    body { font-family: 'Apple SD Gothic Neo','Noto Sans KR',sans-serif; background: var(--bg); color: var(--text-main); min-height: 100vh; padding-bottom: 32px; }
+    header { background: linear-gradient(135deg,#1A56DB,#3B82F6); color:#fff; padding:18px 20px 20px; text-align:center; }
+    header h1 { font-size:1.4rem; font-weight:800; }
+    .header-badge { display:inline-flex; align-items:center; gap:6px; background:rgba(255,255,255,.18); border-radius:20px; padding:3px 12px; font-size:.78rem; margin-top:8px; }
+    .dot { width:8px;height:8px;border-radius:50%;background:#6EE7B7;animation:pulse 1.5s infinite; }
+    @keyframes pulse{0%,100%{opacity:1;transform:scale(1)}50%{opacity:.5;transform:scale(1.35)}}
+
+    main { max-width:500px;margin:0 auto;padding:14px;display:flex;flex-direction:column;gap:12px; }
+    .card { background:var(--card);border-radius:var(--radius);box-shadow:var(--shadow);padding:18px; }
+    .card-title { font-size:.98rem;font-weight:700;margin-bottom:13px;display:flex;align-items:center;gap:8px; }
+    .c-icon { width:28px;height:28px;border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:.95rem; }
+    .ci-blue{background:#EFF6FF} .ci-green{background:#ECFDF5} .ci-purple{background:#F5F3FF}
+
+    /* 사용자명 */
+    .user-row { display:flex;gap:8px; }
+    .user-input { flex:1;font-size:1.05rem;padding:12px 14px; border:2px solid var(--border);border-radius:11px; outline:none;background:#F9FAFB; }
+    .user-input:focus { border-color:var(--primary);background:#fff; }
+    .user-input:disabled { background:#F3F4F6;color:var(--text-main); }
+    
+    .btn { cursor:pointer;border:none;border-radius:11px;font-size:.98rem;font-weight:700; transition:all .15s;display:flex;align-items:center;justify-content:center;gap:6px; }
+    .btn:active { transform:scale(.96); }
+    .btn-outline { padding:12px 16px;background:#EFF6FF;color:var(--primary);border:2px solid #BFDBFE; }
+    .btn-primary { width:100%;padding:15px;font-size:1.02rem; background:var(--primary);color:#fff;border-radius:12px; }
+    .btn-success { width:100%;padding:16px;font-size:1.05rem; background:linear-gradient(135deg,#0E9F6E,#059669); color:#fff;border-radius:12px; }
+    
+    /* 하이브리드 스캐너 UI */
+    .scanner-container { position: relative; width: 100%; aspect-ratio: 4/3; background: #000; border-radius: 12px; overflow: hidden; margin-bottom: 12px; display: flex; flex-direction: column; align-items: center; justify-content: center; }
+    #liveVideo { width: 100%; height: 100%; object-fit: cover; display: none; }
+    #scanOverlay { position: absolute; inset: 0; border: 4px solid rgba(59, 130, 246, 0.5); border-radius: 12px; pointer-events: none; display: none; }
+    .scanner-msg { color: #fff; font-size: 0.9rem; text-align: center; padding: 20px; line-height: 1.5; }
+    .fallback-btn { margin-top: 15px; padding: 14px 20px; background: #0E9F6E; color: white; border-radius: 10px; border: none; font-size: 1.05rem; font-weight: 700; cursor: pointer; display: flex; align-items: center; gap: 8px; }
+    
+    /* 상태 및 결과 */
+    #statusBox { text-align:center;font-size:.95rem;font-weight:700; padding:12px 16px;border-radius:11px;margin-top:10px; background:#F3F4F6;color:var(--text-sub); }
+    #statusBox.scanning{background:#EFF6FF;color:var(--primary)}
+    #statusBox.success {background:#ECFDF5;color:var(--success)}
+    #statusBox.error   {background:#FEF2F2;color:var(--danger)}
+
+    #qrResult { display:none;margin-top:10px;padding:12px 14px; background:#F0FDF4;border:1.5px solid #BBF7D0;border-radius:11px; }
+    .qr-res-row{display:flex;gap:8px;font-size:.88rem;margin-bottom:4px}
+    .qr-res-label{font-weight:700;color:#065F46;min-width:60px}
+    .qr-res-val{color:var(--text-main)}
+
+    /* 기록 리스트 */
+    .record-list{display:flex;flex-direction:column;gap:9px}
+    .record-item { display:flex;align-items:center;gap:10px; padding:11px 13px;background:#F9FAFB; border-radius:11px;border-left:4px solid var(--primary); }
+    .record-item.gps{border-left-color:var(--success)}
+    .r-badge{min-width:36px;height:36px;border-radius:9px;background:#EFF6FF;color:var(--primary);display:flex;align-items:center;justify-content:center}
+    .r-info{flex:1;min-width:0}
+    .r-id{font-size:.95rem;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+    .r-time{font-size:.75rem;color:var(--text-sub);margin-top:1px}
+
+    /* Toast & Spinner */
+    #toast { position:fixed;bottom:24px;left:50%; transform:translateX(-50%) translateY(20px); background:#1F2937;color:#fff;padding:12px 20px; border-radius:11px;font-size:.92rem;font-weight:600; opacity:0;transition:all .3s;z-index:999; text-align:center; }
+    #toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
+    .spinner{display:inline-block;width:17px;height:17px;border:3px solid rgba(255,255,255,.4);border-top-color:#fff;border-radius:50%;animation:spin .7s linear infinite}
+    @keyframes spin{to{transform:rotate(360deg)}}
+  </style>
+</head>
+<body>
+
+<header>
+  <h1>🪖 출입문 복무관리</h1>
+  <div class="header-badge"><span class="dot"></span><span id="headerUser">사용자 미설정</span></div>
+</header>
+
+<main>
+  <div class="card">
+    <div class="card-title"><div class="c-icon ci-blue">👤</div>사용자 정보</div>
+    <div class="user-row">
+      <input id="userNameInput" type="text" class="user-input" placeholder="이름을 입력하세요" disabled />
+      <button class="btn btn-outline" id="userEditBtn" onclick="toggleUserEdit()">수정</button>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-title"><div class="c-icon ci-blue">📷</div>QR 스캔</div>
+    
+    <div class="scanner-container" id="scannerContainer">
+      <div id="scannerMsg" class="scanner-msg">
+        카메라를 초기화하고 있습니다...<br><br><span class="spinner"></span>
+      </div>
+      <video id="liveVideo" autoplay muted playsinline></video>
+      <div id="scanOverlay"></div>
+      <input type="file" id="fileScanInput" accept="image/*" capture="environment" style="display:none" onchange="handleFileScan(event)">
+    </div>
+
+    <button class="btn btn-primary" id="startScanBtn" onclick="initLiveScanner()">🎥 스캔 모드 켜기</button>
+
+    <div id="statusBox">대기 중...</div>
+    <div id="qrResult">
+      <div class="qr-res-row"><span class="qr-res-label">관리번호</span><span class="qr-res-val" id="resCnum">-</span></div>
+      <div class="qr-res-row"><span class="qr-res-label">위치명</span><span class="qr-res-val" id="resAddress">-</span></div>
+    </div>
+    <canvas id="hiddenCanvas" style="display:none;"></canvas>
+  </div>
+
+  <div class="card">
+    <div class="card-title"><div class="c-icon ci-green">📍</div>GPS 위치 기록 (QR 훼손 시)</div>
+    <button class="btn btn-success" id="locationBtn" onclick="recordLocation()">📍 현재 위치로 스캔 대체하기</button>
+  </div>
+
+  <div class="card">
+    <div class="card-title">
+      <div class="c-icon ci-purple">📋</div>최근 기록
+      <button onclick="loadRecentRecords()" style="margin-left:auto;font-size:.78rem;background:#F3F4F6;border:none;border-radius:8px;padding:5px 10px;cursor:pointer;color:var(--text-sub);font-weight:700;">🔄 새로고침</button>
+    </div>
+    <div class="record-list" id="recordList"><div class="empty-msg">📭 기록이 없습니다</div></div>
+  </div>
+</main>
+<div id="toast"></div>
+
+<script>
+// =========================================================================
+// ★★★ [필수 설정] 아래 따옴표 안에 구글 스크립트 웹앱 URL을 꼭 붙여넣으세요 ★★★
+// =========================================================================
+const API_URL = "https://script.google.com/macros/s/AKfycbxGNPf4jHbM3aaByCsva_nsntXWngPzlq3Y_7f5HJ0E3POxG_mUuvjF2GgSTVdJ-Sg/exec";
+
+// ==========================================
+// 서버 통신 (API) 핵심 함수
+// ==========================================
+async function callAPI(action, payload = {}) {
+  try {
+    const response = await fetch(API_URL, {
+      method: 'POST',
+      redirect: 'follow', // GAS 리다이렉트 처리를 위해 필수
+      headers: { 'Content-Type': 'text/plain;charset=utf-8' }, // CORS 방지용 text/plain
+      body: JSON.stringify({ action: action, ...payload })
+    });
+    return await response.json();
+  } catch (error) {
+    console.error("API 통신 오류:", error);
+    throw error;
+  }
+}
+
+// ==========================================
+// 전역 변수 및 초기화
+// ==========================================
+let videoStream = null;
+let scanAnimationFrame = null;
+let isScanning = false;
+
+window.addEventListener('DOMContentLoaded', () => {
+  loadUser();
+  loadRecentRecords();
+});
+
+// ==========================================
+// 사용자 관리
+// ==========================================
+function loadUser() {
+  const saved = localStorage.getItem('dutyCare_userName') || '';
+  const input = document.getElementById('userNameInput');
+  if (saved) { input.value=saved; updateHeaderUser(saved); }
+  else { input.disabled=false; input.focus(); document.getElementById('userEditBtn').textContent='저장'; }
+}
+function toggleUserEdit() {
+  const input = document.getElementById('userNameInput');
+  const btn = document.getElementById('userEditBtn');
+  if (input.disabled) { input.disabled=false; input.focus(); btn.textContent='저장'; }
+  else {
+    const name = input.value.trim();
+    if (!name) return showToast('⚠️ 이름을 입력해주세요');
+    localStorage.setItem('dutyCare_userName', name);
+    input.disabled=true; btn.textContent='수정';
+    updateHeaderUser(name); showToast('✅ 이름 저장됨');
+  }
+}
+function updateHeaderUser(n) { document.getElementById('headerUser').textContent = n+' 님'; }
+function getUserName() { return localStorage.getItem('dutyCare_userName')||''; }
+
+// ==========================================
+// 하이브리드 스캐너 (실시간 -> 실패 시 사진)
+// ==========================================
+function initLiveScanner() {
+  if (!getUserName()) return showToast('⚠️ 먼저 이름을 입력하고 저장해주세요.');
+  
+  const video = document.getElementById('liveVideo');
+  const msgDiv = document.getElementById('scannerMsg');
+  const overlay = document.getElementById('scanOverlay');
+  
+  document.getElementById('qrResult').style.display = 'none';
+  document.getElementById('startScanBtn').style.display = 'none';
+  msgDiv.innerHTML = '카메라 권한을 확인 중입니다...<br><span class="spinner" style="margin-top:10px;"></span>';
+  msgDiv.style.display = 'block';
+  video.style.display = 'none';
+  overlay.style.display = 'none';
+  isScanning = true;
+
+  navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment', width: {ideal: 1280}, height: {ideal: 720} } })
+    .then(stream => {
+      videoStream = stream;
+      video.srcObject = stream;
+      video.setAttribute("playsinline", true);
+      video.play();
+      
+      video.onloadedmetadata = () => {
+        msgDiv.style.display = 'none';
+        video.style.display = 'block';
+        overlay.style.display = 'block';
+        setStatus('scanning', '📷 QR 코드를 비춰주세요');
+        requestAnimationFrame(tickLiveScan);
+      };
+    })
+    .catch(err => {
+      stopVideoStream();
+      msgDiv.innerHTML = `
+        <div style="color:#FCA5A5; margin-bottom: 10px;">⚠️ 현재 브라우저에서는<br>실시간 카메라를 지원하지 않습니다.</div>
+        <div style="font-size:0.85rem; color:#D1D5DB;">아래 버튼을 눌러 QR을 <b>촬영</b>하시면<br>자동으로 스캔됩니다.</div>
+        <button class="fallback-btn" onclick="document.getElementById('fileScanInput').click()">📸 사진 찍어서 스캔하기</button>
+      `;
+      setStatus('', '대기 중 (사진 촬영 모드)');
+    });
+}
+
+function stopVideoStream() {
+  isScanning = false;
+  if (videoStream) {
+    videoStream.getTracks().forEach(track => track.stop());
+    videoStream = null;
+  }
+  if (scanAnimationFrame) cancelAnimationFrame(scanAnimationFrame);
+}
+
+function tickLiveScan() {
+  if (!isScanning) return;
+  const video = document.getElementById('liveVideo');
+  if (video.readyState === video.HAVE_ENOUGH_DATA) {
+    const canvas = document.getElementById('hiddenCanvas');
+    canvas.width = video.videoWidth; canvas.height = video.videoHeight;
+    const ctx = canvas.getContext('2d');
+    ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+    
+    const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+    const code = jsQR(imageData.data, imageData.width, imageData.height, { inversionAttempts: "dontInvert" });
+    
+    if (code && code.data) {
+      stopVideoStream();
+      video.style.display = 'none';
+      document.getElementById('scanOverlay').style.display = 'none';
+      document.getElementById('scannerMsg').innerHTML = `<div style="color:#6EE7B7;font-size:1.1rem;font-weight:bold;">✅ 스캔 성공!</div>`;
+      document.getElementById('scannerMsg').style.display = 'block';
+      
+      const btn = document.getElementById('startScanBtn');
+      btn.style.display = 'block';
+      btn.innerText = '🔄 다시 스캔하기';
+      
+      processScannedData(code.data);
+      return;
+    }
+  }
+  scanAnimationFrame = requestAnimationFrame(tickLiveScan);
+}
+
+function handleFileScan(event) {
+  const file = event.target.files[0];
+  if (!file) return;
+
+  setStatus('scanning', '🔍 사진 분석 중...');
+  document.getElementById('scannerMsg').innerHTML = '<span class="spinner"></span><br><br>이미지를 해독하고 있습니다...';
+  
+  const reader = new FileReader();
+  reader.onload = (e) => {
+    const img = new Image();
+    img.onload = () => {
+      const canvas = document.getElementById('hiddenCanvas');
+      const ctx = canvas.getContext('2d');
+      const sizes = [800, 1000, 1200, img.naturalWidth];
+      let foundData = null;
+
+      for (const size of sizes) {
+        const scale = Math.min(size / img.naturalWidth, 1);
+        canvas.width = Math.round(img.naturalWidth * scale);
+        canvas.height = Math.round(img.naturalHeight * scale);
+        ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+        
+        const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+        let code = jsQR(imageData.data, canvas.width, canvas.height, { inversionAttempts: 'dontInvert' });
+        if(!code) code = jsQR(imageData.data, canvas.width, canvas.height, { inversionAttempts: 'attemptBoth' });
+        
+        if (code && code.data) { foundData = code.data; break; }
+      }
+
+      if (foundData) {
+        document.getElementById('scannerMsg').innerHTML = `<div style="color:#6EE7B7;font-size:1.1rem;font-weight:bold;">✅ 인식 성공!</div>`;
+        processScannedData(foundData);
+      } else {
+        document.getElementById('scannerMsg').innerHTML = `
+          <div style="color:#FCA5A5; margin-bottom:10px;">❌ QR 코드를 찾지 못했습니다.</div>
+          <button class="fallback-btn" onclick="document.getElementById('fileScanInput').click()">📸 다시 선명하게 촬영하기</button>
+        `;
+        setStatus('error', '❌ 인식 실패. 초점을 맞춰 다시 찍어주세요.');
+      }
+      event.target.value = ''; 
+    };
+    img.src = e.target.result;
+  };
+  reader.readAsDataURL(file);
+}
+
+// ==========================================
+// 서버(GAS) DB 조회 및 전송
+// ==========================================
+function processScannedData(rawData) {
+  setStatus('scanning', '📡 서버(DB) 조회 중...');
+  
+  let qrId = '';
+  try {
+    const parsedUrl = new URL(rawData);
+    qrId = parsedUrl.searchParams.get('num') || parsedUrl.searchParams.get('id');
+  } catch(e) { qrId = rawData; }
+
+  if (!qrId) { setStatus('error', '❌ 유효하지 않은 출입문 QR입니다.'); return; }
+
+  callAPI('getGateInfo', { qrId: qrId })
+    .then(result => {
+      if(result.error) throw new Error(result.error);
+      
+      if(result.found) {
+        document.getElementById('resCnum').textContent = result.cnum;
+        document.getElementById('resAddress').textContent = result.address;
+        document.getElementById('qrResult').style.display = 'block';
+        setStatus('saving', '✅ 정보 확인! 서버에 기록 저장 중...');
+
+        saveToSheet({ recordType: 'QR스캔', locationId: result.cnum, locationName: result.address, lat: '', lng: '', memo: '' });
+      } else {
+        setStatus('error', '❌ DB에 등록되지 않은 출입문입니다.');
+        showToast('⚠️ DB에 없는 번호입니다.');
+      }
+    })
+    .catch(err => {
+      setStatus('error', '❌ 서버 통신 실패');
+      showToast('네트워크를 확인해주세요.');
+    });
+}
+
+// ==========================================
+// 위치 기록
+// ==========================================
+function recordLocation() {
+  if (!getUserName()) return showToast('⚠️ 이름을 먼저 입력해주세요.');
+  const btn = document.getElementById('locationBtn');
+  btn.disabled=true; btn.innerHTML='<span class="spinner"></span> GPS 수신 중...';
+
+  if (!navigator.geolocation) { showToast('❌ 위치 정보를 지원하지 않는 기기입니다.'); resetLocBtn(); return; }
+  
+  navigator.geolocation.getCurrentPosition(
+    pos => {
+      setStatus('saving', '✅ 위치 확인! 저장 중...');
+      saveToSheet({ recordType:'GPS기록', locationId:'QR대체(GPS)', locationName:'',
+        lat:pos.coords.latitude.toFixed(6), lng:pos.coords.longitude.toFixed(6), memo:'' });
+    },
+    err => {
+      showToast('❌ 위치 권한이 차단되었거나 수신할 수 없습니다.');
+      resetLocBtn();
+      setStatus('error', '❌ GPS 정보 수신 실패');
+    },
+    {enableHighAccuracy:true, timeout:15000}
+  );
+}
+function resetLocBtn() { const btn=document.getElementById('locationBtn'); btn.disabled=false; btn.innerHTML='📍 현재 위치로 스캔 대체하기'; }
+
+// ==========================================
+// 저장 및 최근 기록 불러오기 (API 연동)
+// ==========================================
+function saveToSheet(fields) {
+  const dataToSave = Object.assign({userName:getUserName()}, fields);
+  
+  callAPI('saveRecord', { data: dataToSave })
+    .then(res => {
+      if (res.success) {
+        setStatus('success',`✅ 처리 완료 (연번: ${res.rowNo})`);
+        showToast(`✅ 저장 완료`);
+        loadRecentRecords();
+      } else {
+        setStatus('error','❌ 저장 실패: ' + (res.error || res.message));
+      }
+      resetLocBtn();
+    })
+    .catch(err => {
+      setStatus('error','❌ 서버 접속 오류');
+      resetLocBtn();
+    });
+}
+
+function loadRecentRecords() {
+  const name = getUserName();
+  if(!name) return;
+  
+  callAPI('getRecentRecords', { userName: name, limit: 3 })
+    .then(records => {
+      const list=document.getElementById('recordList');
+      if (!records||records.length===0) return list.innerHTML='<div class="empty-msg">📭 기록이 없습니다</div>';
+      list.innerHTML=records.map(r=>{
+        const isGps = r.recordType==='GPS기록';
+        const title = r.locationId ? `${r.locationId}${r.locationName?' · '+r.locationName:''}` : `GPS`;
+        return `<div class="record-item ${isGps?'gps':''}">
+          <div class="r-badge ${isGps?'gps':''}">${isGps?'📍':'📷'}</div>
+          <div class="r-info"><div class="r-id">${esc(title)}</div><div class="r-time">⏰ ${esc(String(r.timestamp))}</div></div>
+        </div>`;
+      }).join('');
+    })
+    .catch(err => console.error('기록 로드 실패', err));
+}
+
+function setStatus(cls,msg) { const b=document.getElementById('statusBox'); b.className=cls; b.textContent=msg; }
+let _tt=null;
+function showToast(msg,dur=2800) {
+  const t=document.getElementById('toast'); t.textContent=msg; t.classList.add('show');
+  clearTimeout(_tt); _tt=setTimeout(()=>t.classList.remove('show'),dur);
+}
+function esc(s) { return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+</script>
+</body>
+</html>
